@@ -194,31 +194,14 @@ if uploaded_file:
                 pdf.ln(5)
 
                 # 写入成绩对比表（每行用 multi_cell，限制宽度）
-                pdf.cell(0, 10, "历次成绩对比班级中位数：", ln=True)
+                # 添加成绩对比表格
+                pdf.cell(0, 10, "历次成绩对比班级中位数:", ln=True)
                 pdf.ln(3)
-                effective_page_width = pdf.w - 2 * pdf.l_margin
                 for idx, row in compare_df.iterrows():
-                    date_str = row['日期'].strftime('%Y-%m-%d')
-                    text = f"{date_str} 学生:{row['总分_学生']} 班级中位数:{row['总分_班级中位数']} 差:{row['与班级中位数差']} ({row['解释']})"
-                    # 防止过长行导致 multi_cell 失败：如果单个汉字过长情形极少，但我们仍按宽度分段写
-                    # 这里把 text 转为 str 并逐段写入
-                    # 按字符数切分（基于经验值），而不是字节数
-                    max_chars = 80
-                    for i in range(0, len(text), max_chars):
-                        pdf.multi_cell(effective_page_width, 6, text[i:i+max_chars])
-                pdf.ln(3)
-
-                # 生成 PDF bytes（兼容 fpdf / fpdf2 各版本）
-                out = pdf.output(dest="S")
-                
-                if isinstance(out, (bytes, bytearray)):
-                    pdf_bytes = bytes(out)  # 确保转成 bytes
-                elif isinstance(out, str):
-                    pdf_bytes = out.encode("latin-1", errors="replace")
-                else:
-                    raise TypeError(f"Unexpected type from pdf.output: {type(out)}")
-                
-                pdf_buf = io.BytesIO(pdf_bytes)
+                    pdf.cell(0, 8, f"{row['日期'].strftime('%Y-%m-%d')} 学生:{row['总分_学生']} 班级中位数:{row['总分_班级中位数']} 差:{row['与班级中位数差']} ({row['解释']})", ln=True)
+    
+                pdf_buf = io.BytesIO()
+                pdf.output(pdf_buf)
                 pdf_buf.seek(0)
                 
                 st.download_button(
