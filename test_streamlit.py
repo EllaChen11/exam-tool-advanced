@@ -208,11 +208,11 @@ if uploaded_file:
                         pdf.multi_cell(effective_page_width, 6, text[i:i+max_chars])
                 pdf.ln(3)
 
-                # 生成 PDF bytes（兼容不同 fpdf 版本）
+                # 生成 PDF bytes（兼容 fpdf / fpdf2 各版本）
                 out = pdf.output(dest="S")
                 
-                if isinstance(out, bytes):
-                    pdf_bytes = out
+                if isinstance(out, (bytes, bytearray)):
+                    pdf_bytes = bytes(out)  # 确保转成 bytes
                 elif isinstance(out, str):
                     pdf_bytes = out.encode("latin-1", errors="replace")
                 else:
