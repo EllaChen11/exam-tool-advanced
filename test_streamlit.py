@@ -6,7 +6,6 @@ import seaborn as sns
 import streamlit as st
 from matplotlib.font_manager import FontProperties
 from fpdf import FPDF
-from datetime import datetime
 
 # -----------------------
 # 字体配置，确保中文显示
@@ -62,7 +61,7 @@ if uploaded_file:
     # -----------------------
     student_name = st.selectbox("请选择学生姓名", df["姓名"].unique())
 
-    if st.button("分析并绘图"):
+    if st.button("分析并生成报告"):
         stu = df[df["姓名"] == student_name].copy()
         if stu.empty:
             st.warning(f"未找到 {student_name} 的记录")
@@ -86,17 +85,20 @@ if uploaded_file:
                 ax1.set_xlabel("考试日期")
                 ax1.set_ylabel("总分")
                 ax1.legend()
-
             plt.xticks(rotation=45)
             st.subheader("📈 历史成绩走势")
             st.pyplot(fig1)
 
             # -----------------------
-            # 分数趋势变化（折线图）
+            # 分数趋势变化（折线图 + 中位数变化）
             # -----------------------
             stu["分数变化"] = stu["总分"].diff()
+            median_df["分数变化"] = median_df["总分"].diff()
+
             fig2, ax2 = plt.subplots(figsize=(8, 4), dpi=120)
-            sns.lineplot(x="日期", y="分数变化", data=stu, marker='o', ax=ax2, label="分数变化趋势")
+            sns.lineplot(x="日期", y="分数变化", data=stu, marker='o', ax=ax2, label=f"{student_name} 分数变化")
+            sns.lineplot(x="日期", y="分数变化", data=median_df, marker='s', linestyle='--', ax=ax2, label="班级中位数分数变化")
+
             if my_font:
                 ax2.set_title(f"{student_name} 分数趋势变化", fontproperties=my_font)
                 ax2.set_xlabel("考试日期", fontproperties=my_font)
@@ -117,7 +119,6 @@ if uploaded_file:
             compare_df = stu.merge(median_df, on="日期", suffixes=("_学生", "_班级中位数"))
             compare_df["与班级中位数差"] = compare_df["总分_学生"] - compare_df["总分_班级中位数"]
 
-            # 添加解释列
             def explain_diff(x):
                 if x > 0:
                     return "高于班级中位数"  # 高于中位数表示成绩比班级大部分同学好
@@ -146,14 +147,14 @@ if uploaded_file:
             pdf.set_auto_page_break(auto=True, margin=15)
             if os.path.exists(FONT_PATH):
                 pdf.add_font("Noto", "", FONT_PATH, uni=True)
-                pdf.set_font("Noto", "", 12)
+                pdf.set_font("Noto", "", 14)
             else:
-                pdf.set_font("Arial", "", 12)
+                pdf.set_font("Arial", "", 14)
 
-            pdf.cell(0, 10, f"{student_name} 成绩分析报告", ln=True, align="C")
+            # 标题
+            pdf.cell(0, 12, f"{student_name} 成绩分析报告", ln=True, align="C")
             pdf.ln(5)
-
-            # 添加成绩波动
+            pdf.set_font("", "", 12)
             pdf.cell(0, 10, f"成绩波动（标准差）: {score_std:.2f}", ln=True)
             pdf.ln(5)
 
@@ -166,23 +167,26 @@ if uploaded_file:
             fig2.savefig(buf2, format="png", bbox_inches="tight")
             buf2.seek(0)
 
-            pdf.image(buf1, x=10, y=None, w=180)
-            pdf.ln(85)  # 调整图像间距
-            pdf.image(buf2, x=10, y=None, w=180)
+            # 添加图表
+            pdf.image(buf1, x=15, y=None, w=180)
+            pdf.ln(85)
+            pdf.image(buf2, x=15, y=None, w=180)
             pdf.ln(85)
 
-            # 添加成绩对比表格
+            # 添加表格
             pdf.cell(0, 10, "历次成绩对比班级中位数:", ln=True)
             pdf.ln(3)
+            pdf.set_font("", "", 10)
             for idx, row in compare_df.iterrows():
-                pdf.cell(0, 8, f"{row['日期'].strftime('%Y-%m-%d')} 学生:{row['总分_学生']} 班级中位数:{row['总分_班级中位数']} 差:{row['与班级中位数差']} ({row['解释']})", ln=True)
-
+                pdf.multi_cell(0, 6, f"{row['日期'].strftime('%Y-%m-%d')} 学生:{row['总分_学生']} "
+                                      f"班级中位数:{row['总分_班级中位数']} "
+                                      f"差:{row['与班级中位数差']} ({row['解释']})")
             pdf_buf = io.BytesIO()
             pdf.output(pdf_buf)
             pdf_buf.seek(0)
 
             st.download_button(
-                label="💾 下载PDF报告",
+                label="💾 下载完整PDF报告",
                 data=pdf_buf,
                 file_name=f"{student_name}_成绩分析报告.pdf",
                 mime="application/pdf"
