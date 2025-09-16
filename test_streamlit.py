@@ -147,44 +147,57 @@ if uploaded_file:
             pdf = FPDF()
             pdf.add_page()
             pdf.set_auto_page_break(auto=True, margin=15)
+            
+            # 字体配置
             if os.path.exists(FONT_PATH):
                 pdf.add_font("Noto", "", FONT_PATH, uni=True)
                 pdf.set_font("Noto", "", 12)
             else:
                 pdf.set_font("Arial", "", 12)
-
+            
+            # 标题
             pdf.cell(0, 10, f"{student_name} 成绩分析报告", ln=True, align="C")
             pdf.ln(5)
-
-            pdf.cell(0, 10, f"成绩波动（标准差）: {score_std:.2f}", ln=True)
+            
+            # 波动分析结果
+            pdf.cell(0, 10, f"学生历次成绩标准差: {student_std:.2f}", ln=True)
+            pdf.cell(0, 10, f"班级中位数标准差: {median_std:.2f}", ln=True)
             pdf.ln(5)
-
+            
             # 保存图像到内存
             buf1 = io.BytesIO()
             fig1.savefig(buf1, format="png", bbox_inches="tight")
             buf1.seek(0)
-
+            
             buf2 = io.BytesIO()
             fig2.savefig(buf2, format="png", bbox_inches="tight")
             buf2.seek(0)
-
+            
             pdf.image(buf1, x=10, y=None, w=180)
             pdf.ln(85)
             pdf.image(buf2, x=10, y=None, w=180)
             pdf.ln(85)
-
+            
+            # 成绩对比表
             pdf.cell(0, 10, "历次成绩对比班级中位数:", ln=True)
             pdf.ln(3)
+            effective_page_width = pdf.w - 2 * pdf.l_margin  # 避免 multi_cell 报错
             for idx, row in compare_df.iterrows():
-                pdf.cell(0, 8, f"{row['日期'].strftime('%Y-%m-%d')} 学生:{row['总分_学生']} 班级中位数:{row['总分_班级中位数']} 差:{row['与班级中位数差']} ({row['解释']})", ln=True)
-
+                text = f"{row['日期'].strftime('%Y-%m-%d')} 学生:{row['总分_学生']} 班级中位数:{row['总分_班级中位数']} " \
+                       f"差:{row['与班级中位数差']} ({row['解释']})"
+                pdf.multi_cell(effective_page_width, 6, text)
+            
+            # 输出到内存（关键修复）
             pdf_buf = io.BytesIO()
-            pdf.output(pdf_buf)
+            pdf_bytes = pdf.output(dest="S").encode("latin-1")
+            pdf_buf.write(pdf_bytes)
             pdf_buf.seek(0)
-
+            
+            # 下载按钮
             st.download_button(
                 label="💾 下载PDF报告",
                 data=pdf_buf,
                 file_name=f"{student_name}_成绩分析报告.pdf",
                 mime="application/pdf"
             )
+
