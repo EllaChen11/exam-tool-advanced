@@ -1,5 +1,6 @@
 import os
 import io
+import tempfile
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -92,6 +93,8 @@ if uploaded_file:
             # -----------------------
             # 分数趋势变化（折线 + 中位数变化）
             # -----------------------
+            stu = stu.sort_values(by="日期")  # 确保有序
+            median_df = median_df.sort_values(by="日期")
             stu["分数变化"] = stu["总分"].diff()
             median_df["分数变化"] = median_df["总分"].diff()
 
@@ -134,70 +137,99 @@ if uploaded_file:
             # -----------------------
             # 波动分析（学生标准差 + 中位数标准差）
             # -----------------------
-            student_std = stu["总分"].std()
-            median_std = median_df["总分"].std()  # 所有考试中位数的标准差
+            student_std = float(stu["总分"].std())
+            median_std = float(median_df["总分"].std())  # 所有考试中位数的标准差
 
             st.subheader("📏 成绩波动分析")
             st.write(f"学生历次成绩标准差: **{student_std:.2f}**")
             st.write(f"班级每次考试中位数标准差: **{median_std:.2f}**")
+            st.write("说明：学生标准差大于中位数标准差 -> 学生成绩波动幅度高于班级中位数的波动，可能较不稳定；反之则较稳定。")
 
             # -----------------------
-            # 生成 PDF 报告
+            # 生成 PDF 报告（修正：兼容 output 返回类型 & 用临时文件插入图片）
             # -----------------------
             pdf = FPDF()
             pdf.add_page()
             pdf.set_auto_page_break(auto=True, margin=15)
-            
-            # 字体配置
+
+            # 加载中文字体（若存在），否则回退 Arial
             if os.path.exists(FONT_PATH):
-                pdf.add_font("Noto", "", FONT_PATH, uni=True)
-                pdf.set_font("Noto", "", 12)
+                try:
+                    pdf.add_font("Noto", "", FONT_PATH, uni=True)
+                    pdf.set_font("Noto", "", 12)
+                except Exception:
+                    pdf.set_font("Arial", "", 12)
             else:
                 pdf.set_font("Arial", "", 12)
-            
-            # 标题
+
+            # 标题与波动信息
             pdf.cell(0, 10, f"{student_name} 成绩分析报告", ln=True, align="C")
             pdf.ln(5)
-            
-            # 波动分析结果
-            pdf.cell(0, 10, f"学生历次成绩标准差: {student_std:.2f}", ln=True)
-            pdf.cell(0, 10, f"班级中位数标准差: {median_std:.2f}", ln=True)
+            pdf.cell(0, 8, f"学生历次成绩标准差: {student_std:.2f}", ln=True)
+            pdf.cell(0, 8, f"班级中位数标准差: {median_std:.2f}", ln=True)
             pdf.ln(5)
-            
-            # 保存图像到内存
-            buf1 = io.BytesIO()
-            fig1.savefig(buf1, format="png", bbox_inches="tight")
-            buf1.seek(0)
-            
-            buf2 = io.BytesIO()
-            fig2.savefig(buf2, format="png", bbox_inches="tight")
-            buf2.seek(0)
-            
-            pdf.image(buf1, x=10, y=None, w=180)
-            pdf.ln(85)
-            pdf.image(buf2, x=10, y=None, w=180)
-            pdf.ln(85)
-            
-            # 成绩对比表
-            pdf.cell(0, 10, "历次成绩对比班级中位数:", ln=True)
-            pdf.ln(3)
-            effective_page_width = pdf.w - 2 * pdf.l_margin  # 避免 multi_cell 报错
-            for idx, row in compare_df.iterrows():
-                text = f"{row['日期'].strftime('%Y-%m-%d')} 学生:{row['总分_学生']} 班级中位数:{row['总分_班级中位数']} " \
-                       f"差:{row['与班级中位数差']} ({row['解释']})"
-                pdf.multi_cell(effective_page_width, 6, text)
-            
-            # 输出到内存（关键修复）
-            pdf_buf = io.BytesIO()
-            pdf_bytes = pdf.output(dest="S").encode("latin-1")
-            pdf_buf.write(pdf_bytes)
-            pdf_buf.seek(0)
-            
-            # 下载按钮
-            st.download_button(
-                label="💾 下载PDF报告",
-                data=pdf_buf,
-                file_name=f"{student_name}_成绩分析报告.pdf",
-                mime="application/pdf"
-            )
 
+            # 将图保存到临时文件（避免某些 fpdf 版本对 file-like 不支持）
+            tmp_files = []
+            try:
+                # fig1 -> temp file
+                tmp1 = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+                fig1.savefig(tmp1.name, format="png", bbox_inches="tight", dpi=150)
+                tmp1.close()
+                tmp_files.append(tmp1.name)
+
+                # fig2 -> temp file
+                tmp2 = tempfile.NamedTemporaryFile(delete=False, suffix=".png")
+                fig2.savefig(tmp2.name, format="png", bbox_inches="tight", dpi=150)
+                tmp2.close()
+                tmp_files.append(tmp2.name)
+
+                # 插入图片（按页宽缩放）
+                page_w = pdf.w - 2 * pdf.l_margin
+                # first figure
+                pdf.image(tmp1.name, x=pdf.l_margin, w=page_w)
+                pdf.ln(5)
+                # second figure
+                pdf.image(tmp2.name, x=pdf.l_margin, w=page_w)
+                pdf.ln(5)
+
+                # 写入成绩对比表（每行用 multi_cell，限制宽度）
+                pdf.cell(0, 10, "历次成绩对比班级中位数：", ln=True)
+                pdf.ln(3)
+                effective_page_width = pdf.w - 2 * pdf.l_margin
+                for idx, row in compare_df.iterrows():
+                    date_str = row['日期'].strftime('%Y-%m-%d')
+                    text = f"{date_str} 学生:{row['总分_学生']} 班级中位数:{row['总分_班级中位数']} 差:{row['与班级中位数差']} ({row['解释']})"
+                    # 防止过长行导致 multi_cell 失败：如果单个汉字过长情形极少，但我们仍按宽度分段写
+                    # 这里把 text 转为 str 并逐段写入
+                    # 按字符数切分（基于经验值），而不是字节数
+                    max_chars = 80
+                    for i in range(0, len(text), max_chars):
+                        pdf.multi_cell(effective_page_width, 6, text[i:i+max_chars])
+                pdf.ln(3)
+
+                # 生成 PDF bytes（兼容 fpdf 返回 str 或 bytes）
+                out = pdf.output(dest="S")
+                if isinstance(out, bytes):
+                    pdf_bytes = out
+                else:
+                    # out is str in some implementations -> encode with latin-1
+                    pdf_bytes = out.encode("latin-1", errors="replace")
+
+                pdf_buf = io.BytesIO(pdf_bytes)
+                pdf_buf.seek(0)
+
+                st.download_button(
+                    label="💾 下载完整 PDF 报告",
+                    data=pdf_buf,
+                    file_name=f"{student_name}_成绩分析报告.pdf",
+                    mime="application/pdf"
+                )
+
+            finally:
+                # 清理临时文件
+                for f in tmp_files:
+                    try:
+                        os.remove(f)
+                    except Exception:
+                        pass
