@@ -1,33 +1,38 @@
+import os
+import io
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 import streamlit as st
-import io
-import os
 from matplotlib.font_manager import FontProperties
 
 # -----------------------
 # 字体配置，确保中文显示
 # -----------------------
-# 请确保项目目录下有 NotoSansSC-Light.otf 文件
-FONT_PATH = "NotoSansSC-Light.otf"
+# 请确保项目目录下有 NotoSansSC-Regular.otf 文件
+FONT_PATH = "NotoSansSC-Regular.otf"
 if os.path.exists(FONT_PATH):
     my_font = FontProperties(fname=FONT_PATH)
 else:
     my_font = None  # fallback
 
+# Seaborn 样式
 sns.set(style="whitegrid")
-plt.rcParams['axes.unicode_minus'] = False
+plt.rcParams['axes.unicode_minus'] = False  # 正常显示负号
 
 # -----------------------
-# 页面标题
+# 常量
+# -----------------------
+REQUIRED_COLS = ["姓名", "总分", "日期"]
+
+# -----------------------
+# Streamlit 页面标题
 # -----------------------
 st.title("📊 学生成绩分析工具 (Web版)")
 
 # -----------------------
 # 上传 Excel 文件
 # -----------------------
-REQUIRED_COLS = ["姓名", "总分", "日期"]
 uploaded_file = st.file_uploader("请选择Excel文件", type=["xlsx", "xls"])
 
 if uploaded_file:
@@ -37,7 +42,7 @@ if uploaded_file:
         st.error(f"文件读取失败: {e}")
         st.stop()
 
-    # 检查列名
+    # 检查必要列
     missing = [c for c in REQUIRED_COLS if c not in df.columns]
     if missing:
         st.error(f"Excel缺少必要列: {missing}")
@@ -45,9 +50,11 @@ if uploaded_file:
 
     # 数据预处理
     df["日期"] = pd.to_datetime(df["日期"], errors="coerce")
-    df["总分"] = pd.to_numeric(df["总分"], errors="coerce")
     df = df.dropna(subset=["姓名", "总分", "日期"])
     df = df.sort_values(by="日期")
+    df["总分"] = pd.to_numeric(df["总分"], errors="coerce")
+    df = df.dropna(subset=["总分"])
+
     st.success("✅ 文件加载成功！")
 
     # -----------------------
@@ -60,95 +67,64 @@ if uploaded_file:
         if stu.empty:
             st.warning(f"未找到 {student_name} 的记录")
         else:
-            # 1️⃣ 成绩趋势图 + 班级中位数
+            # 每次考试班级总分中位数
             median_df = df.groupby("日期")["总分"].median().reset_index()
 
+            # -----------------------
+            # 绘图
+            # -----------------------
             fig, ax = plt.subplots(figsize=(8, 5), dpi=120)
-            ax.plot(stu["日期"], stu["总分"], marker='o', label=f"{student_name} 总分")
-            ax.plot(median_df["日期"], median_df["总分"], marker='s', linestyle='--', label="班级中位数")
-            ax.set_title(f"{student_name} 历次成绩走势", fontproperties=my_font)
-            ax.set_xlabel("考试日期", fontproperties=my_font)
-            ax.set_ylabel("总分", fontproperties=my_font)
+
+            # 使用 Seaborn 绘制散点和折线
+            sns.lineplot(x="日期", y="总分", data=stu, marker='o', ax=ax, label=f"{student_name} 总分")
+            sns.lineplot(x="日期", y="总分", data=median_df, marker='s', linestyle='--', ax=ax, label="班级总分中位数")
+
+            # 设置中文字体
+            if my_font:
+                ax.set_title(f"{student_name} 历次成绩走势", fontproperties=my_font)
+                ax.set_xlabel("考试日期", fontproperties=my_font)
+                ax.set_ylabel("总分", fontproperties=my_font)
+                ax.legend(prop=my_font)
+            else:
+                ax.set_title(f"{student_name} 历次成绩走势")
+                ax.set_xlabel("考试日期")
+                ax.set_ylabel("总分")
+                ax.legend()
+
             ax.grid(True)
-            ax.legend(prop=my_font)
+            plt.xticks(rotation=45)
+
+            # 显示图表
             st.pyplot(fig)
 
-            # 2️⃣ 成绩增长率表格
-            stu['上次成绩'] = stu['总分'].shift(1)
-            stu['增长率(%)'] = ((stu['总分'] - stu['上次成绩']) / stu['上次成绩'] * 100).round(2)
-            st.write(f"📈 {student_name} 各次考试成绩变化：")
-            st.dataframe(stu[['日期', '总分', '上次成绩', '增长率(%)']].fillna('-'))
-
-            # 3️⃣ 班级成绩分布（箱线图）
-            fig2, ax2 = plt.subplots(figsize=(8,5), dpi=120)
-            sns.boxplot(x='日期', y='总分', data=df, ax=ax2)
-            sns.scatterplot(x='日期', y='总分', data=stu, color='red', s=100, label=student_name)
-            ax2.set_title(f"{student_name} 与班级成绩分布", fontproperties=my_font)
-            ax2.set_xlabel("考试日期", fontproperties=my_font)
-            ax2.set_ylabel("总分", fontproperties=my_font)
-            ax2.legend(prop=my_font)
-            st.pyplot(fig2)
-
-            # 4️⃣ 成绩区间统计
-            bins = [0, 60, 70, 80, 90, 100]
-            labels = ['<60','60-69','70-79','80-89','90-100']
-            stu['成绩区间'] = pd.cut(stu['总分'], bins=bins, labels=labels, right=False)
-            count_interval = stu['成绩区间'].value_counts().reindex(labels)
-            fig3, ax3 = plt.subplots(figsize=(6,4), dpi=120)
-            count_interval.plot(kind='bar', color='skyblue', ax=ax3)
-            ax3.set_title(f"{student_name} 成绩区间统计", fontproperties=my_font)
-            ax3.set_xlabel("分数区间", fontproperties=my_font)
-            ax3.set_ylabel("次数", fontproperties=my_font)
-            st.pyplot(fig3)
-
-            # 5️⃣ 排名百分比
-            df['排名'] = df.groupby('日期')['总分'].rank(ascending=False, method='min')
-            df['总人数'] = df.groupby('日期')['总分'].transform('count')
-            df['百分比'] = ((df['总人数'] - df['排名']) / df['总人数'] * 100).round(2)
-            stu_rank = df[df['姓名']==student_name][['日期','总分','排名','总人数','百分比']]
-            st.write(f"🏆 {student_name} 各次考试排名与百分比：")
-            st.dataframe(stu_rank)
+            # -----------------------
+            # 提供下载图表
+            # -----------------------
+            buf = io.BytesIO()
+            fig.savefig(buf, format="png", bbox_inches="tight")
+            buf.seek(0)
+            st.download_button(
+                label="💾 下载图表 (PNG)",
+                data=buf.getvalue(),
+                file_name=f"{student_name}_成绩走势.png",
+                mime="image/png"
+            )
 
             # -----------------------
-            # 导出图表和报告
+            # 提供数据分析功能
             # -----------------------
-            # 图表 PNG
-            buf_fig = io.BytesIO()
-            fig.savefig(buf_fig, format='png', bbox_inches='tight')
-            buf_fig2 = io.BytesIO()
-            fig2.savefig(buf_fig2, format='png', bbox_inches='tight')
-            buf_fig3 = io.BytesIO()
-            fig3.savefig(buf_fig3, format='png', bbox_inches='tight')
+            st.subheader("📊 基本数据统计")
+            st.write(stu.describe())
 
-            st.download_button(
-                label="💾 下载成绩趋势图",
-                data=buf_fig.getvalue(),
-                file_name=f"{student_name}_成绩趋势.png",
-                mime="image/png"
-            )
+            st.subheader("📈 分数趋势变化")
+            stu["分数变化"] = stu["总分"].diff()
+            st.line_chart(stu.set_index("日期")["分数变化"])
 
-            st.download_button(
-                label="💾 下载班级分布图",
-                data=buf_fig2.getvalue(),
-                file_name=f"{student_name}_班级分布.png",
-                mime="image/png"
-            )
+            st.subheader("📌 历次成绩对比班级中位数")
+            compare_df = stu.merge(median_df, on="日期", suffixes=("_学生", "_班级中位数"))
+            compare_df["与班级中位数差"] = compare_df["总分_学生"] - compare_df["总分_班级中位数"]
+            st.dataframe(compare_df)
 
-            st.download_button(
-                label="💾 下载成绩区间统计图",
-                data=buf_fig3.getvalue(),
-                file_name=f"{student_name}_成绩区间统计.png",
-                mime="image/png"
-            )
-
-            # Excel 报告
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                stu.to_excel(writer, sheet_name='成绩变化', index=False)
-                stu_rank.to_excel(writer, sheet_name='排名百分比', index=False)
-            st.download_button(
-                label="💾 下载分析报告 (Excel)",
-                data=output.getvalue(),
-                file_name=f"{student_name}_成绩分析报告.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            )
+            st.subheader("📈 与班级中位数差异走势")
+            sns.lineplot(x="日期", y="与班级中位数差", data=compare_df, marker='o', ax=ax, label="差值")
+            st.pyplot(fig)
