@@ -1,4 +1,5 @@
 import os
+import io
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
@@ -8,26 +9,28 @@ from matplotlib.font_manager import FontProperties
 # -----------------------
 # 字体配置，确保中文显示
 # -----------------------
-# 请确保项目目录下有 NotoSansSC-Regular.otf 文件
-FONT_PATH = "./NotoSansSC-Regular.otf"
+FONT_PATH = "./NotoSansSC-Regular.otf"  # 请确保项目目录下有该字体文件
 if os.path.exists(FONT_PATH):
     my_font = FontProperties(fname=FONT_PATH)
-    plt.rcParams['font.family'] = my_font.get_name()
 else:
     my_font = None  # fallback
 
 sns.set(style="whitegrid")
-plt.rcParams['axes.unicode_minus'] = False
+plt.rcParams['axes.unicode_minus'] = False  # 负号正常显示
 
 # -----------------------
-# Streamlit 页面标题
+# 必要列
 # -----------------------
-st.title("📊 学生成绩分析工具")
+REQUIRED_COLS = ["姓名", "总分", "日期"]
+
+# -----------------------
+# 页面标题
+# -----------------------
+st.title("📊 学生成绩分析工具 (Web版)")
 
 # -----------------------
 # 上传 Excel 文件
 # -----------------------
-REQUIRED_COLS = ["姓名", "总分", "日期"]
 uploaded_file = st.file_uploader("请选择Excel文件", type=["xlsx", "xls"])
 
 if uploaded_file:
@@ -63,60 +66,54 @@ if uploaded_file:
             st.warning(f"未找到 {student_name} 的记录")
         else:
             # -----------------------
-            # 历史成绩走势折线图
+            # 历史成绩走势
             # -----------------------
+            median_df = df.groupby("日期")["总分"].median().reset_index()
+
             fig, ax = plt.subplots(figsize=(8, 5), dpi=120)
-            ax.plot(stu["日期"], stu["总分"], marker='o', label=f"{student_name} 总分")
-            ax.set_title(f"{student_name} 历次成绩走势")
-            ax.set_xlabel("考试日期")
-            ax.set_ylabel("总分")
-            ax.grid(True)
-            ax.legend()
+            sns.lineplot(x="日期", y="总分", data=stu, marker='o', ax=ax, label=f"{student_name} 总分")
+            sns.lineplot(x="日期", y="总分", data=median_df, marker='s', linestyle='--', ax=ax, label="班级总分中位数")
+
+            # 中文显示
+            if my_font:
+                ax.set_title(f"{student_name} 历次成绩走势", fontproperties=my_font)
+                ax.set_xlabel("考试日期", fontproperties=my_font)
+                ax.set_ylabel("总分", fontproperties=my_font)
+                ax.legend(prop=my_font)
+            else:
+                ax.set_title(f"{student_name} 历次成绩走势")
+                ax.set_xlabel("考试日期")
+                ax.set_ylabel("总分")
+                ax.legend()
+
+            plt.xticks(rotation=45)
+            st.subheader("📈 历史成绩走势")
             st.pyplot(fig)
 
             # -----------------------
-            # 分数趋势散点图
+            # 分数趋势变化
             # -----------------------
-            median_df = df.groupby("日期")["总分"].median().reset_index()
-            fig2, ax2 = plt.subplots(figsize=(8, 5), dpi=120)
-            sns.scatterplot(x="日期", y="总分", data=stu, color='red', s=100, label=student_name)
-            sns.scatterplot(x="日期", y="总分", data=median_df, color='blue', s=100, label="班级中位数")
-            ax2.set_title(f"{student_name} 分数趋势变化")
-            ax2.set_xlabel("考试日期")
-            ax2.set_ylabel("总分")
-            ax2.grid(True)
-            ax2.legend()
-            st.pyplot(fig2)
+            stu["分数变化"] = stu["总分"].diff()
+            st.subheader("📊 分数趋势变化")
+            st.line_chart(stu.set_index("日期")["分数变化"])
 
             # -----------------------
             # 历次成绩对比班级中位数表格
             # -----------------------
-            compare_df = pd.merge(
-                stu[['日期','总分']],
-                median_df.rename(columns={"总分":"班级中位数"}),
-                on="日期"
-            )
-            compare_df["与班级中位数差"] = compare_df["总分"] - compare_df["班级中位数"]
+            compare_df = stu.merge(median_df, on="日期", suffixes=("_学生", "_班级中位数"))
+            compare_df["与班级中位数差"] = compare_df["总分_学生"] - compare_df["总分_班级中位数"]
 
             # 添加解释列
             def explain_diff(x):
                 if x > 0:
-                    return "高于班级中位数"  # 说明该次成绩比班级中位数高，表现较好
+                    return "高于班级中位数"
                 elif x < 0:
-                    return "低于班级中位数"  # 说明该次成绩比班级中位数低，需要改进
+                    return "低于班级中位数"
                 else:
-                    return "等于班级中位数"  # 说明该次成绩与班级中位数持平
+                    return "等于班级中位数"
 
             compare_df["解释"] = compare_df["与班级中位数差"].apply(explain_diff)
 
-            # 彩色显示表格
-            def highlight_row(row):
-                if row["解释"] == "高于班级中位数":
-                    return ['background-color: #c6f6d5']*len(row)  # 绿色
-                elif row["解释"] == "低于班级中位数":
-                    return ['background-color: #fed7d7']*len(row)  # 红色
-                else:
-                    return ['background-color: #fefcbf']*len(row)  # 黄色
-
+            # 显示表格
             st.subheader("📋 历次成绩对比班级中位数")
-            st.dataframe(compare_df.style.apply(highlight_row, axis=1))
+            st.dataframe(compare_df[["日期", "总分_学生", "总分_班级中位数", "与班级中位数差", "解释"]])
