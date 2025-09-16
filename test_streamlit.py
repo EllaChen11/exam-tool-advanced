@@ -70,7 +70,6 @@ if uploaded_file:
             # 历史成绩走势
             # -----------------------
             median_df = df.groupby("日期")["总分"].median().reset_index()
-            class_std_df = df.groupby("日期")["总分"].std().reset_index().rename(columns={"总分":"班级标准差"})
 
             fig1, ax1 = plt.subplots(figsize=(8, 5), dpi=120)
             sns.lineplot(x="日期", y="总分", data=stu, marker='o', ax=ax1, label=f"{student_name} 总分")
@@ -120,28 +119,28 @@ if uploaded_file:
             compare_df = stu.merge(median_df, on="日期", suffixes=("_学生", "_班级中位数"))
             compare_df["与班级中位数差"] = compare_df["总分_学生"] - compare_df["总分_班级中位数"]
 
-            # 添加解释列
             def explain_diff(x):
                 if x > 0:
-                    return "高于班级中位数"  # 高于中位数表示成绩比班级大部分同学好
+                    return "高于班级中位数"
                 elif x < 0:
                     return "低于班级中位数"
                 else:
                     return "等于班级中位数"
 
             compare_df["解释"] = compare_df["与班级中位数差"].apply(explain_diff)
-
             st.subheader("📋 历次成绩对比班级中位数")
             st.dataframe(compare_df[["日期", "总分_学生", "总分_班级中位数", "与班级中位数差", "解释"]])
 
             # -----------------------
-            # 波动分析（学生标准差 + 班级标准差）
+            # 波动分析（学生标准差 + 中位数标准差）
             # -----------------------
             student_std = stu["总分"].std()
+            median_std = median_df["总分"].std()  # 所有考试中位数的标准差
+
             st.subheader("📏 成绩波动分析")
-            st.write(f"学生历次成绩标准差（波动幅度）: **{student_std:.2f}**")
-            st.write("班级每次考试标准差表示班级整体成绩波动幅度，若学生波动大于班级标准差，说明成绩不稳定。")
-            st.dataframe(class_std_df)
+            st.write(f"学生历次成绩标准差: **{student_std:.2f}**（波动幅度越大表示成绩不稳定）")
+            st.write(f"班级每次考试中位数标准差: **{median_std:.2f}**")
+            st.write("如果学生标准差大于班级中位数标准差，说明该学生成绩波动幅度偏大。")
 
             # -----------------------
             # 生成 PDF 报告
@@ -158,6 +157,7 @@ if uploaded_file:
             pdf.cell(0, 10, f"{student_name} 成绩分析报告", ln=True, align="C")
             pdf.ln(5)
             pdf.cell(0, 10, f"学生标准差: {student_std:.2f}", ln=True)
+            pdf.cell(0, 10, f"班级中位数标准差: {median_std:.2f}", ln=True)
             pdf.ln(5)
 
             # 保存图像到内存
