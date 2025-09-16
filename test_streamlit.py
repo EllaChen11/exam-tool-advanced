@@ -208,17 +208,19 @@ if uploaded_file:
                         pdf.multi_cell(effective_page_width, 6, text[i:i+max_chars])
                 pdf.ln(3)
 
-                # 生成 PDF bytes（兼容 fpdf 返回 str 或 bytes）
+                # 生成 PDF bytes（兼容不同 fpdf 版本）
                 out = pdf.output(dest="S")
+                
                 if isinstance(out, bytes):
                     pdf_bytes = out
-                else:
-                    # out is str in some implementations -> encode with latin-1
+                elif isinstance(out, str):
                     pdf_bytes = out.encode("latin-1", errors="replace")
-
+                else:
+                    raise TypeError(f"Unexpected type from pdf.output: {type(out)}")
+                
                 pdf_buf = io.BytesIO(pdf_bytes)
                 pdf_buf.seek(0)
-
+                
                 st.download_button(
                     label="💾 下载完整 PDF 报告",
                     data=pdf_buf,
