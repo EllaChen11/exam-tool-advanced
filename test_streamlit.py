@@ -92,17 +92,21 @@ if uploaded_file:
             st.pyplot(fig1)
 
             # -----------------------
-            # 分数趋势变化
+            # 分数趋势变化（折线图）
             # -----------------------
             stu["分数变化"] = stu["总分"].diff()
             fig2, ax2 = plt.subplots(figsize=(8, 4), dpi=120)
-            sns.barplot(x="日期", y="分数变化", data=stu, ax=ax2, palette="Blues_d")
+            sns.lineplot(x="日期", y="分数变化", data=stu, marker='o', ax=ax2, label="分数变化趋势")
             if my_font:
                 ax2.set_title(f"{student_name} 分数趋势变化", fontproperties=my_font)
                 ax2.set_xlabel("考试日期", fontproperties=my_font)
                 ax2.set_ylabel("分数变化", fontproperties=my_font)
+                ax2.legend(prop=my_font)
             else:
                 ax2.set_title(f"{student_name} 分数趋势变化")
+                ax2.set_xlabel("考试日期")
+                ax2.set_ylabel("分数变化")
+                ax2.legend()
             plt.xticks(rotation=45)
             st.subheader("📊 分数趋势变化")
             st.pyplot(fig2)
