@@ -128,7 +128,7 @@ if uploaded_file:
             # -----------------------
             st.subheader("📝 材料题 & 选择题 成绩走势")
 
-            need_cols = ["材料题", "选择题"]
+            need_cols = ["材料", "选择"]
             missing_sub_cols = [c for c in need_cols if c not in df.columns]
 
             if missing_sub_cols:
