@@ -134,12 +134,12 @@ if uploaded_file:
             if missing_sub_cols:
                 st.warning(f"Excel 缺少以下题型列，无法绘制材料题/选择题折线图：{missing_sub_cols}")
             else:
-                df["材料题"] = pd.to_numeric(df["材料题"], errors="coerce")
-                df["选择题"] = pd.to_numeric(df["选择题"], errors="coerce")
-                stu["材料题"] = pd.to_numeric(stu["材料题"], errors="coerce")
-                stu["选择题"] = pd.to_numeric(stu["选择题"], errors="coerce")
+                df["材料"] = pd.to_numeric(df["材料"], errors="coerce")
+                df["选择"] = pd.to_numeric(df["选择"], errors="coerce")
+                stu["材料"] = pd.to_numeric(stu["材料"], errors="coerce")
+                stu["选择"] = pd.to_numeric(stu["选择"], errors="coerce")
 
-                median_sub = df.groupby("日期")[["材料题", "选择题"]].median().reset_index()
+                median_sub = df.groupby("日期")[["材料", "选择"]].median().reset_index()
 
                 # -------- 材料题 --------
                 fig_mat, ax_mat = plt.subplots(figsize=(8, 4), dpi=120)
